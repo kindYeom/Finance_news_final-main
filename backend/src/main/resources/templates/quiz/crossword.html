@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>가로세로 낱말 퀴즈</title>
+    <link rel="stylesheet" href="/css/quiz.css">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700&display=swap" rel="stylesheet">
+    <script th:inline="javascript">
+        /*<![CDATA[*/
+        window.userId = /*[[${userId}]]*/ 0;
+        window.userNickname = /*[['${userNickname}']]*/ '';
+        /*]]>*/
+    </script>
+</head>
+<body style="margin: 0; font-family: 'Noto Sans KR', sans-serif; background-color: #f5f5f5;">
+<div style="display: flex; height: 100vh; flex-direction: column;">
+
+    <!-- 상단: 전체 제출 버튼 -->
+    <div style="padding: 20px 40px; background-color: #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+        <div style="display: flex; justify-content: space-between; align-items: center; max-width: 1600px; margin: 0 auto;">
+            <h1 style="margin: 0; font-size: 28px; color: #333;">🧩 가로세로 낱말 퀴즈</h1>
+            <div style="display: flex; gap: 12px;">
+                <button id="submitAllBtn" style="padding: 12px 24px; background-color: #4a90e2; color: white; border: none; border-radius: 12px; 
+                        font-size: 16px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 12px rgba(74,144,226,0.3);">
+                    전체 제출
+                </button>
+                <button id="showAnswersBtn" style="padding: 12px 24px; background-color: #ff6b6b; color: white; border: none; border-radius: 12px; 
+                        font-size: 16px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 12px rgba(255,107,107,0.3); display: none;">
+                    오답 확인
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 메인 컨텐츠 영역 -->
+    <div style="display: flex; flex: 1; overflow: hidden;">
+    <!-- 좌측: 가로세로 보드 -->
+        <div style="flex: 1.5; padding: 40px; display: flex; flex-direction: column; align-items: center; overflow-y: auto;">
+            <div id="crosswordBoard" style="margin: 0 auto;"></div>
+    </div>
+
+    <!-- 우측: 문제 리스트 -->
+        <div style="flex: 1; padding: 24px 36px; background-color: #fff8fc; overflow-y: auto; box-shadow: -3px 0 8px rgba(0,0,0,0.05);">
+        <h2 style="color: #ff69b4; font-size: 20px; margin-bottom: 20px;">📜 문제 목록</h2>
+        <div id="clueSection" style="width: 100%;"></div>
+    </div>
+    </div>
+</div>
+
+<script>
+    let quizData = null; // 퀴즈 데이터 저장
+    let currentDirection = 'across'; // 현재 방향
+    let currentPosition = null; // 현재 위치
+    let quizResults = null; // 퀴즈 결과 저장
+    
+    window.onload = async function () {
+        if (!window.userId) {
+            alert('로그인 후 이용해주세요.');
+            location.href = '/login';
+            return;
+        }
+
+        const response = await fetch(`/api/quiz/crossword?userId=${window.userId}`);
+        const quiz = await response.json();
+        quizData = quiz; // 퀴즈 데이터 저장
+
+        // 실제 사용된 영역 계산
+        let minRow = 999, maxRow = -1, minCol = 999, maxCol = -1;
+        quiz.items.forEach(item => {
+            let r = item.row, c = item.col;
+            for (let i = 0; i < item.length; i++) {
+                if (item.direction === "across") {
+                    minRow = Math.min(minRow, r);
+                    maxRow = Math.max(maxRow, r);
+                    minCol = Math.min(minCol, c + i);
+                    maxCol = Math.max(maxCol, c + i);
+                } else {
+                    minRow = Math.min(minRow, r + i);
+                    maxRow = Math.max(maxRow, r + i);
+                    minCol = Math.min(minCol, c);
+                    maxCol = Math.max(maxCol, c);
+                }
+            }
+        });
+
+        // 여유 공간 추가 (좌우 1칸씩, 하단 1칸)
+        minCol = Math.max(0, minCol - 1);
+        maxCol += 1;
+        maxRow += 1; // 하단 여유 공간
+        
+        // 최상단에 여유 공간 1칸을 추가하기 위해 minRow를 0으로 설정하지 않고 조정
+        const width = maxCol - minCol + 1;
+        const height = maxRow - minRow + 2;  // +2: 상단 여유 공간 1칸 + 정상 계산된 높이
+        const board = Array.from({length: height}, () => Array(width).fill(null));
+
+        // 번호 매핑을 위한 2D 배열 (가로, 세로 각각)
+        const acrossNumbers = Array.from({length: height}, () => Array(width).fill(null));
+        const downNumbers = Array.from({length: height}, () => Array(width).fill(null));
+
+        quiz.items.forEach(item => {
+            let r = item.row, c = item.col;
+            for (let i = 0; i < item.length; i++) {
+                if (item.direction === "across") {
+                    let adjRow = r - minRow + 1;  // +1로 최상단 여유 공간 추가
+                    let adjCol = c + i - minCol;
+                    board[adjRow][adjCol] = { term: item.term, idx: i, number: i === 0 ? item.number : null, itemIdx: quiz.items.indexOf(item), direction: "across", row: r, col: c + i };
+                    if (i === 0) acrossNumbers[adjRow][adjCol] = item.number;
+                } else {
+                    let adjRow = r + i - minRow + 1;  // +1로 최상단 여유 공간 추가
+                    let adjCol = c - minCol;
+                    board[adjRow][adjCol] = { term: item.term, idx: i, number: i === 0 ? item.number : null, itemIdx: quiz.items.indexOf(item), direction: "down", row: r + i, col: c };
+                    if (i === 0) downNumbers[adjRow][adjCol] = item.number;
+                }
+            }
+        });
+        
+        // 전역 변수로 조정 값 저장
+        window.minRow = minRow;
+        window.minCol = minCol;
+
+        const boardDiv = document.getElementById("crosswordBoard");
+        const table = document.createElement("table");
+        table.style.borderCollapse = "collapse";
+        table.style.margin = "0 auto";
+        table.style.background = "#fffafc";
+        table.style.boxShadow = "0 4px 16px rgba(0,0,0,0.08)";
+        table.style.borderRadius = "20px";
+        table.id = "crosswordTable";
+
+        for (let r = 0; r < height; r++) {
+            const tr = document.createElement("tr");
+            for (let c = 0; c < width; c++) {
+                const td = document.createElement("td");
+                td.style.width = td.style.height = "36px";
+                td.style.border = "1.5px solid #d0d0d0";
+                td.style.background = board[r][c] ? "#fff" : "#f0f0f0";
+                td.style.position = "relative";
+                td.style.borderRadius = "8px";
+
+                if (board[r][c]) {
+                    td.className = "crossword-cell";
+                    // 원래 좌표 저장 (조정 전 좌표)
+                    td.dataset.originalRow = board[r][c].row;
+                    td.dataset.originalCol = board[r][c].col;
+                    td.dataset.row = r;
+                    td.dataset.col = c;
+
+                    // 번호 표시 (가로/세로 모두 표시)
+                    if (acrossNumbers[r][c] || downNumbers[r][c]) {
+                        const numberDiv = document.createElement("div");
+                        numberDiv.style.position = "absolute";
+                        numberDiv.style.top = "2px";
+                        numberDiv.style.left = "4px";
+                        numberDiv.style.fontSize = "8px";
+                        numberDiv.style.lineHeight = "1";
+
+                        if (acrossNumbers[r][c] && downNumbers[r][c]) {
+                            // 겹치는 경우
+                            numberDiv.innerHTML = `<span style="color:#4a90e2;">${acrossNumbers[r][c]}</span><br><span style="color:#ff69b4;">${downNumbers[r][c]}</span>`;
+                        } else if (acrossNumbers[r][c]) {
+                            // 가로만
+                            numberDiv.innerHTML = `<span style="color:#4a90e2;">${acrossNumbers[r][c]}</span>`;
+                        } else {
+                            // 세로만
+                            numberDiv.innerHTML = `<span style="color:#ff69b4;">${downNumbers[r][c]}</span>`;
+                        }
+
+                        td.appendChild(numberDiv);
+                    }
+
+                    const input = document.createElement("input");
+                    input.type = "text";
+                    input.maxLength = 1;
+                    input.style.width = "100%";
+                    input.style.height = "100%";
+                    input.style.textAlign = "center";
+                    input.style.fontSize = "18px";
+                    input.style.border = "none";
+                    input.style.background = "transparent";
+                    input.style.caretColor = board[r][c].direction === "across" ? "#4a90e2" : "#ff69b4";
+                    input.style.borderRadius = "8px";
+                    input.dataset.row = r;
+                    input.dataset.col = c;
+                    input.readOnly = false;
+                    input.classList.add("crossword-input");
+                    
+                    // 입력 이벤트 처리 - 한 글자만 입력되도록 보장
+                    input.addEventListener('input', function(e) {
+                        const value = e.target.value;
+                        // 한 글자가 아닌 경우 첫 글자만 유지
+                        if (value.length > 1) {
+                            e.target.value = value.charAt(0);
+                        }
+                    });
+                    
+                    // 키보드 이벤트 처리 (방향키 이동)
+                    input.addEventListener('keydown', function(e) {
+                        handleKeyDown(e);
+                    });
+                    
+                    // 포커스 이벤트 - 현재 방향 결정
+                    input.addEventListener('focus', function(e) {
+                        const r = parseInt(e.target.dataset.row);
+                        const c = parseInt(e.target.dataset.col);
+                        currentPosition = {row: r, col: c};
+                        const cellData = board[r][c];
+                        if (cellData) {
+                            currentDirection = cellData.direction;
+                        }
+                    });
+                    
+                    td.appendChild(input);
+                }
+
+                tr.appendChild(td);
+            }
+            table.appendChild(tr);
+        }
+        boardDiv.appendChild(table);
+
+        // 문제 리스트 생성
+        const clueSection = document.getElementById("clueSection");
+        clueSection.innerHTML = quiz.items.map((item, idx) => {
+            const clueText = (item.clue || item.question).replace(/\n/g, "<br>");
+            return `
+            <div class="crossword-quiz-row" id="quizRow_${idx}"
+                style="display: flex; align-items: center; margin-bottom: 16px; background: ${item.direction === 'across' ? '#e6f3ff' : '#fff0fa'};
+                       border-radius: 16px; padding: 12px 16px; box-shadow: 0 2px 6px rgba(0,0,0,0.05);">
+                <span style="font-weight:bold; color:${item.direction === 'across' ? '#4a90e2' : '#ff69b4'}; min-width:60px;">
+                    ${item.number}. ${item.direction === 'across' ? '가로' : '세로'}
+                </span>
+                <span style="margin-left:10px; flex:1; font-size:14px; color:#333;">${clueText}</span>
+                <button id="hintBtn_${idx}" style="margin-left:6px; border:none; background:${item.direction === 'across' ? '#b3d9ff' : '#ffccdc'};
+                        color:#333; border-radius:8px; padding:5px 8px; cursor: pointer;">초성 힌트</button>
+                <span id="hintText_${idx}" style="display:none; margin-left:10px; color:#888;">${item.initialHint}</span>
+                <span id="resultIcon_${idx}" style="margin-left:12px; font-size:22px;"></span>
+            </div>
+            `;
+        }).join("");
+
+        // 힌트 버튼 이벤트
+        quiz.items.forEach((item, idx) => {
+            document.getElementById(`hintBtn_${idx}`).onclick = function() {
+                const hintText = document.getElementById(`hintText_${idx}`);
+                hintText.style.display = hintText.style.display === "none" ? "inline" : "none";
+            };
+        });
+
+        // 전체 제출 버튼 이벤트
+        document.getElementById("submitAllBtn").onclick = async function() {
+            if (!window.userId) {
+                alert('로그인 후 이용해주세요.');
+                return;
+            }
+
+            const answers = collectAnswers();
+            
+            // 이전 뱃지 정보 저장
+            let previousBadges = new Set();
+            try {
+                const prevBadgeRes = await fetch(`/api/users/${window.userId}/badges`);
+                if (prevBadgeRes.ok) {
+                    const prevBadges = await prevBadgeRes.json();
+                    previousBadges = new Set(prevBadges.filter(b => b.earned).map(b => b.name));
+                }
+            } catch (e) {
+                console.error('이전 뱃지 로드 실패:', e);
+            }
+            
+            try {
+                const response = await fetch('/api/quiz/submit-crossword', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ answers: answers })
+                });
+                
+                const result = await response.json();
+                displayResults(result);
+                
+                // 제출 후 입력 비활성화
+                document.querySelectorAll('.crossword-input').forEach(input => {
+                    input.disabled = true;
+                });
+                
+                document.getElementById("submitAllBtn").disabled = true;
+                document.getElementById("submitAllBtn").textContent = "완료";
+                document.getElementById("submitAllBtn").style.background = "#94a3b8";
+                
+                // 오답 확인 버튼 표시
+                document.getElementById("showAnswersBtn").style.display = "block";
+                
+                // 포인트 갱신 및 팝업 표시
+                if (result && result.score > 0) {
+                    try {
+                        const pointsRes = await fetch(`/api/users/${window.userId}/points`);
+                        if (pointsRes.ok) {
+                            const pointsData = await pointsRes.json();
+                            const earned = result.score || 0;
+                            const latestTotal = result.totalPoints || (pointsData.totalPoints || 0) + earned;
+
+                            // 포인트 획득 팝업
+                            await showPointsNotification(earned, latestTotal);
+                            
+                            // 뱃지 변경 확인
+                            setTimeout(async () => {
+                                await checkBadgeChanges(previousBadges);
+                            }, 300);
+                        }
+                    } catch (error) {
+                        console.error('포인트 갱신 실패:', error);
+                    }
+                }
+                
+            } catch (error) {
+                console.error('Error submitting crossword:', error);
+                alert('제출 중 오류가 발생했습니다.');
+            }
+        };
+        
+        // 오답 확인 버튼 이벤트
+        document.getElementById("showAnswersBtn").onclick = function() {
+            showWrongAnswers();
+        };
+    };
+
+    // 보드판에서 답안 수집
+    function collectAnswers() {
+        const answers = {};
+        const table = document.getElementById('crosswordTable');
+        if (!table) return answers;
+        
+        quizData.items.forEach((item, idx) => {
+            let r = item.row, c = item.col;
+            let userAnswer = '';
+            
+            for (let i = 0; i < item.length; i++) {
+                let rr = item.direction === "across" ? r : r+i;
+                let cc = item.direction === "across" ? c+i : c;
+                // 조정된 좌표로 찾기 (최상단 여유 공간 1칸 추가)
+                const adjR = rr - window.minRow + 1;
+                const adjC = cc - window.minCol;
+                const input = table.rows[adjR]?.cells[adjC]?.querySelector(".crossword-input");
+                if (input) {
+                    userAnswer += input.value || '';
+                }
+            }
+            
+            if (userAnswer.trim()) {
+                answers[item.term] = userAnswer;
+            }
+        });
+        
+        return answers;
+    }
+
+    // 결과 표시
+    function displayResults(result) {
+        quizResults = result.results || {}; // 결과 저장
+        const table = document.getElementById('crosswordTable');
+        
+        // 각 셀에 대한 결과 정보 수집
+        const cellResults = {}; // key: "r,c", value: { acrossCorrect, downCorrect, acrossItem, downItem }
+        
+        quizData.items.forEach((item, idx) => {
+            const isCorrect = quizResults[item.term] || false;
+                let r = item.row, c = item.col;
+            
+                for (let i = 0; i < item.length; i++) {
+                    let rr = item.direction === "across" ? r : r+i;
+                    let cc = item.direction === "across" ? c+i : c;
+                    const key = `${rr},${cc}`;
+                
+                if (!cellResults[key]) {
+                    cellResults[key] = {};
+                }
+                
+                if (item.direction === "across") {
+                    cellResults[key].acrossCorrect = isCorrect;
+                    cellResults[key].acrossItem = item;
+                } else {
+                    cellResults[key].downCorrect = isCorrect;
+                    cellResults[key].downItem = item;
+                }
+            }
+        });
+        
+        // 셀에 색깔 적용 (가로 문제 우선권, 맞은 문제만 색깔 표시)
+        for (const [key, data] of Object.entries(cellResults)) {
+            const [rr, cc] = key.split(',').map(Number);
+            const adjR = rr - window.minRow + 1;  // 최상단 여유 공간 1칸 고려
+            const adjC = cc - window.minCol;
+            const input = table.rows[adjR]?.cells[adjC]?.querySelector(".crossword-input");
+
+                    if (input) {
+                // 가로 문제 우선권 적용
+                let colorApplied = false;
+                
+                // 1. 가로 문제가 정답인 경우
+                if (data.acrossItem && data.acrossCorrect) {
+                    input.style.background = "#f2f8ff";
+                    input.style.color = "#000000";
+                    colorApplied = true;
+                }
+                // 2. 가로 문제가 정답이 아니고 세로 문제가 정답인 경우
+                else if (data.downItem && data.downCorrect && (!data.acrossItem || !data.acrossCorrect)) {
+                    input.style.background = "#fff6fb";
+                            input.style.color = "#000000";
+                    colorApplied = true;
+                }
+                // 3. 둘 다 오답인 경우
+                if (!colorApplied) {
+                                input.style.background = "#ffe0e0";
+                                input.style.color = "#ff4d4f";
+                            }
+                
+                            input.style.fontWeight = "bold";
+                        }
+        }
+        
+        // 문제 목록에 결과 표시
+        quizData.items.forEach((item, idx) => {
+            const isCorrect = quizResults[item.term] || false;
+            const quizRow = document.getElementById(`quizRow_${idx}`);
+            const icon = document.getElementById(`resultIcon_${idx}`);
+            if (quizRow && icon) {
+                quizRow.style.border = isCorrect 
+                    ? (item.direction === "across" ? "2px solid #4a90e2" : "2px solid #ff69b4") 
+                    : "2px solid #ff4d4f";
+                icon.innerHTML = isCorrect 
+                    ? `<span style="color:${item.direction === "across" ? "#4a90e2" : "#ff69b4"};">✔</span>` 
+                    : '<span style="color:#ff4d4f;">✖</span>';
+            }
+        });
+    }
+    
+    // 틀린 문제 정답 표시
+    function showWrongAnswers() {
+        const table = document.getElementById('crosswordTable');
+        
+        // 오답 문제 추출
+        const wrongItems = quizData.items.filter(item => !quizResults[item.term]);
+        
+        // 틀린 문제에 대해 색깔 우선권 적용
+        wrongItems.forEach(item => {
+    let r = item.row, c = item.col;
+            
+    for (let i = 0; i < item.length; i++) {
+        let rr = item.direction === "across" ? r : r+i;
+        let cc = item.direction === "across" ? c+i : c;
+                // 조정된 좌표로 찾기 (최상단 여유 공간 1칸 추가)
+                const adjR = rr - window.minRow + 1;
+                const adjC = cc - window.minCol;
+                const input = table.rows[adjR]?.cells[adjC]?.querySelector(".crossword-input");
+                
+        if (input) {
+                    // 정답을 빨간 글씨로 표시
+            input.value = item.term[i];
+                    input.style.background = "#ffe0e0";
+                    input.style.color = "#dc2626"; // 진한 빨강
+            input.style.fontWeight = "bold";
+                }
+            }
+        });
+        
+        // 버튼 비활성화
+        document.getElementById("showAnswersBtn").disabled = true;
+        document.getElementById("showAnswersBtn").textContent = "오답 확인 완료";
+        document.getElementById("showAnswersBtn").style.background = "#94a3b8";
+    }
+
+    // 키보드 이벤트 처리 - 방향키로 셀 이동만 허용
+    function handleKeyDown(e) {
+        const r = parseInt(e.target.dataset.row);
+        const c = parseInt(e.target.dataset.col);
+        let nextInput = null;
+        
+        switch(e.key) {
+            case 'ArrowRight':
+                e.preventDefault();
+                nextInput = document.querySelector(`.crossword-input[data-row="${r}"][data-col="${c+1}"]`);
+                if (nextInput && !nextInput.disabled) {
+                    nextInput.focus();
+                }
+                break;
+            case 'ArrowLeft':
+                e.preventDefault();
+                nextInput = document.querySelector(`.crossword-input[data-row="${r}"][data-col="${c-1}"]`);
+                if (nextInput && !nextInput.disabled) {
+                    nextInput.focus();
+                }
+                break;
+            case 'ArrowDown':
+                e.preventDefault();
+                nextInput = document.querySelector(`.crossword-input[data-row="${r+1}"][data-col="${c}"]`);
+                if (nextInput && !nextInput.disabled) {
+                    nextInput.focus();
+                }
+                break;
+            case 'ArrowUp':
+                e.preventDefault();
+                nextInput = document.querySelector(`.crossword-input[data-row="${r-1}"][data-col="${c}"]`);
+                if (nextInput && !nextInput.disabled) {
+                    nextInput.focus();
+                }
+                break;
+        }
+    }
+    
+    // 포인트 획득 팝업
+    async function showPointsNotification(earnedPoints, totalPoints) {
+        const notification = document.createElement('div');
+        notification.style.cssText = `
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: linear-gradient(135deg, #4CAF50, #45a049);
+            color: white;
+            padding: 20px 30px;
+            border-radius: 12px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+            z-index: 1000;
+            animation: slideIn 0.5s ease-out;
+            min-width: 280px;
+        `;
+        
+        // 다음 단계 정보 및 현재 뱃지 가져오기
+        let nextStage = '';
+        let progressPercent = 0;
+        let currentBadge = null;
+        try {
+            const badgeRes = await fetch(`/api/users/${window.userId}/badges`);
+            if (badgeRes.ok) {
+                const badges = await badgeRes.json();
+                const earnedBadges = badges.filter(b => b.earned);
+                
+                // 현재 등급 찾기
+                const rankOrder = ['브론즈','실버','골드','플래티넘'];
+                currentBadge = earnedBadges
+                    .filter(b => rankOrder.includes(b.name))
+                    .sort((a,b) => rankOrder.indexOf(b.name) - rankOrder.indexOf(a.name))[0];
+                
+                const next = badges.filter(b => !b.earned).sort((a,b)=>a.conditionValue-b.conditionValue)[0];
+                if (next) {
+                    nextStage = next.name;
+                    progressPercent = Math.min(100, (totalPoints / next.conditionValue) * 100);
+                }
+            }
+        } catch (e) {
+            console.error('뱃지 정보 로드 실패:', e);
+        }
+        
+        notification.innerHTML = `
+            <div style="font-weight: bold; margin-bottom: 8px; font-size: 18px;">🎉 포인트 획득!</div>
+            ${currentBadge ? `
+                <div style="display: flex; flex-direction: column; align-items: center; gap: 12px; margin-bottom: 12px;">
+                    <img src="${currentBadge.imageUrl}" alt="${currentBadge.name}" style="width: 240px; height: 240px; object-fit: contain;">
+                    <div style="text-align: center;">
+                        <div style="font-size: 13px; opacity: 0.9;">현재 등급</div>
+                        <div style="font-weight: bold; font-size: 16px;">${currentBadge.name}</div>
+                    </div>
+                </div>
+            ` : ''}
+            <div style="margin-bottom: 6px; font-size: 16px;">+${earnedPoints}점 획득</div>
+            <div style="font-size: 13px; opacity: 0.9; margin-bottom: 12px;">총 ${totalPoints}점</div>
+            ${nextStage ? `
+                <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.3);">
+                    <div style="font-size: 12px; margin-bottom: 6px;">다음 단계: ${nextStage}</div>
+                    <div style="width: 100%; height: 8px; background: rgba(255,255,255,0.3); border-radius: 4px; overflow: hidden;">
+                        <div style="height: 100%; width: ${progressPercent}%; background: white; border-radius: 4px; transition: width 0.8s ease;"></div>
+                    </div>
+                </div>
+            ` : ''}
+        `;
+        document.body.appendChild(notification);
+        setTimeout(() => {
+            notification.style.animation = 'slideOut 0.5s ease-in';
+            setTimeout(() => { if (notification.parentNode) notification.parentNode.removeChild(notification); }, 500);
+        }, 4000);
+    }
+    
+    // 뱃지 변경 확인 및 팝업
+    async function checkBadgeChanges(previousBadges) {
+        try {
+            const badgeRes = await fetch(`/api/users/${window.userId}/badges`);
+            if (!badgeRes.ok) return;
+            
+            const badges = await badgeRes.json();
+            const currentBadgesSet = new Set(badges.filter(b => b.earned).map(b => b.name));
+            const newlyEarnedNames = [...currentBadgesSet].filter(b => !previousBadges.has(b));
+            
+            if (newlyEarnedNames.length > 0) {
+                // 뱃지 전체 정보 가져오기
+                const newlyEarnedBadges = badges.filter(b => b.earned && newlyEarnedNames.includes(b.name));
+                showBadgeNotification(newlyEarnedBadges);
+            }
+        } catch (error) {
+            console.error('뱃지 확인 실패:', error);
+        }
+    }
+    
+    // 뱃지 획득 팝업
+    function showBadgeNotification(badges) {
+        const notification = document.createElement('div');
+        notification.style.cssText = `
+            position: fixed;
+            top: 15%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: linear-gradient(135deg, #ff8a00, #e52e71);
+            color: white;
+            padding: 20px 30px;
+            border-radius: 12px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+            z-index: 1001;
+            animation: badgeSlideIn 0.5s ease-out;
+            max-width: 350px;
+            text-align: center;
+        `;
+        
+        const list = badges.map(badge => {
+            return `
+                <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+                    <img src="${badge.imageUrl}" alt="${badge.name}" style="width: 50px; height: 50px; object-fit: contain;">
+                    <div style="text-align: left;">
+                        <div style="font-weight: bold; font-size: 16px;">${badge.name}</div>
+                        <div style="font-size: 11px; opacity: 0.9;">새로 획득한 뱃지</div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+        
+        notification.innerHTML = `
+            <div style="font-weight: bold; margin-bottom: 12px; font-size: 18px;">새 뱃지 획득!</div>
+            <div style="font-size: 14px; line-height: 1.4;">${list}</div>
+        `;
+        document.body.appendChild(notification);
+        setTimeout(() => {
+            notification.style.animation = 'badgeSlideOut 0.5s ease-in';
+            setTimeout(() => { if (notification.parentNode) notification.parentNode.removeChild(notification); }, 500);
+        }, 4000);
+    }
+    
+    // CSS 애니메이션
+    const style = document.createElement('style');
+    style.textContent = `
+        @keyframes slideIn {
+            from { transform: translate(-50%, -50%) scale(0.8); opacity: 0; }
+            to { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+        }
+        @keyframes slideOut {
+            from { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+            to { transform: translate(-50%, -50%) scale(0.8); opacity: 0; }
+        }
+        @keyframes badgeSlideIn {
+            from { transform: translate(-50%, -50%) scale(0.8); opacity: 0; }
+            to { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+        }
+        @keyframes badgeSlideOut {
+            from { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+            to { transform: translate(-50%, -50%) scale(0.8); opacity: 0; }
+        }
+    `;
+    document.head.appendChild(style);
+</script>
+</body>
+</html>

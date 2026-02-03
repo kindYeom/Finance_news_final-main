@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>STJ 금융뉴스 이해 플랫폼</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&family=Noto+Sans+KR:wght@400;500;600;700&display=swap');
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        html, body {
+            height: 100%;
+            font-family: 'Noto Sans KR', sans-serif;
+            overflow: hidden;
+        }
+        .container {
+            display: flex;
+            height: 100vh;
+            background: #F8F9FB;
+        }
+        
+        /* 왼쪽 섹션 - 브랜딩 */
+        .left-section {
+            flex: 1;
+            background: linear-gradient(135deg, #0F1C7C 0%, #2B5CF1 100%);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 40px;
+            position: relative;
+            overflow: hidden;
+        }
+        /* 그라데이션 애니메이션 배경 */
+        .left-section::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(43, 92, 241, 0.3) 0%, transparent 70%);
+            animation: gradientMove 15s ease-in-out infinite;
+        }
+        @keyframes gradientMove {
+            0%, 100% { transform: translate(0, 0) rotate(0deg); }
+            50% { transform: translate(20px, 20px) rotate(180deg); }
+        }
+        .logo-container {
+            text-align: center;
+            position: relative;
+            z-index: 1;
+            margin-bottom: 60px;
+        }
+        .logo {
+            font-family: 'Poppins', sans-serif;
+            font-size: 5rem;
+            font-weight: 700;
+            color: white;
+            letter-spacing: 8px;
+            position: relative;
+            display: inline-block;
+            margin-bottom: 40px;
+        }
+        /* T 강조 효과 */
+        .logo .letter-t {
+            position: relative;
+            display: inline-block;
+        }
+        .logo .letter-t::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 80px;
+            height: 80px;
+            border: 3px dashed rgba(255, 255, 255, 0.7);
+            border-radius: 50%;
+            animation: pulse 2s ease-in-out infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 0.7; }
+            50% { transform: translate(-50%, -50%) scale(1.1); opacity: 1; }
+        }
+        
+        /* 동적 태그라인 */
+        .dynamic-tagline {
+            min-height: 80px;
+            color: white;
+            font-size: 20px;
+            font-weight: 500;
+            letter-spacing: 0.5px;
+            text-align: center;
+            position: relative;
+        }
+        .tagline-text {
+            position: absolute;
+            width: 100%;
+            opacity: 0;
+            transform: translateY(20px);
+            animation: fadeInOut 12s infinite;
+            white-space: nowrap;
+        }
+        .tagline-text:nth-child(1) { animation-delay: 0s; }
+        .tagline-text:nth-child(2) { animation-delay: 2.4s; }
+        .tagline-text:nth-child(3) { animation-delay: 4.8s; }
+        .tagline-text:nth-child(4) { animation-delay: 7.2s; }
+        .tagline-text:nth-child(5) { animation-delay: 9.6s; }
+        
+        @keyframes fadeInOut {
+            0% { opacity: 0; transform: translateY(20px); }
+            8% { opacity: 1; transform: translateY(0); }
+            16% { opacity: 1; transform: translateY(0); }
+            24% { opacity: 0; transform: translateY(-20px); }
+            100% { opacity: 0; transform: translateY(-20px); }
+        }
+        
+        /* 오른쪽 섹션 - 로그인 폼 */
+        .right-section {
+            flex: 1;
+            background: #F8F9FB;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 40px;
+        }
+        .login-card {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
+            padding: 48px 40px;
+            width: 100%;
+            max-width: 440px;
+        }
+        .sign-in-title {
+            font-family: 'Poppins', sans-serif;
+            font-size: 2.2rem;
+            font-weight: 700;
+            color: #1E1E1E;
+            margin-bottom: 8px;
+            text-align: left;
+            letter-spacing: -0.5px;
+        }
+        .sign-in-subtitle {
+            font-size: 15px;
+            color: #6B7280;
+            margin-bottom: 40px;
+            font-weight: 400;
+            letter-spacing: 0.2px;
+        }
+        .login-form {
+            width: 100%;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            color: #374151;
+        }
+        .form-group input {
+            width: 100%;
+            padding: 14px 16px;
+            border: 2px solid #E5E7EB;
+            border-radius: 10px;
+            font-size: 15px;
+            outline: none;
+            transition: all 0.3s ease;
+            background: #fff;
+            color: #1E1E1E;
+            font-family: 'Noto Sans KR', sans-serif;
+        }
+        .form-group input:focus {
+            border-color: #2B5CF1;
+            box-shadow: 0 0 0 4px rgba(43, 92, 241, 0.1);
+            background: #FAFBFC;
+        }
+        .form-group input::placeholder {
+            color: #9CA3AF;
+        }
+        .form-footer {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-top: 32px;
+            margin-bottom: 24px;
+        }
+        .go-btn {
+            background: linear-gradient(135deg, #0F1C7C 0%, #2B5CF1 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            padding: 16px 24px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 12px rgba(43, 92, 241, 0.25);
+            text-align: center;
+            width: 100%;
+            font-family: 'Noto Sans KR', sans-serif;
+            letter-spacing: 0.3px;
+        }
+        .go-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(43, 92, 241, 0.35);
+        }
+        .go-btn:active {
+            transform: translateY(0);
+        }
+        .error-message {
+            background: #FEF2F2;
+            border: 1px solid #FEE2E2;
+            border-radius: 10px;
+            padding: 14px 16px;
+            margin-bottom: 24px;
+            display: none;
+        }
+        .error-message.show {
+            display: block;
+            animation: slideDown 0.3s ease;
+        }
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        .error-text {
+            color: #F05B5B;
+            font-size: 14px;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .field-error {
+            color: #F05B5B;
+            font-size: 13px;
+            margin-top: 8px;
+            display: block;
+            font-weight: 400;
+        }
+        .additional-actions {
+            margin-top: 32px;
+            padding-top: 24px;
+            border-top: 1px solid #E5E7EB;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .action-btn {
+            width: 100%;
+            padding: 14px 16px;
+            border: 2px solid #E5E7EB;
+            border-radius: 10px;
+            background: white;
+            color: #374151;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-align: center;
+            text-decoration: none;
+            font-family: 'Noto Sans KR', sans-serif;
+        }
+        .action-btn:hover {
+            background: #F9FAFB;
+            border-color: #2B5CF1;
+            color: #2B5CF1;
+            transform: translateY(-1px);
+        }
+        .signup-btn {
+            background: white;
+            color: #2B5CF1;
+            border: 2px solid #2B5CF1;
+        }
+        .signup-btn:hover {
+            background: #2B5CF1;
+            color: white;
+            border-color: #2B5CF1;
+        }
+        
+        /* 반응형 디자인 */
+        @media (max-width: 768px) {
+            .container {
+                flex-direction: column;
+            }
+            .left-section {
+                flex: 0.45;
+                padding: 30px 20px;
+            }
+            .logo {
+                font-size: 3.5rem;
+                letter-spacing: 4px;
+                margin-bottom: 30px;
+            }
+            .dynamic-tagline {
+                font-size: 16px;
+                min-height: 60px;
+            }
+            .right-section {
+                flex: 0.55;
+                padding: 30px 20px;
+            }
+            .login-card {
+                padding: 36px 28px;
+                max-width: 100%;
+            }
+            .sign-in-title {
+                font-size: 1.8rem;
+            }
+            .tagline-text {
+                white-space: normal;
+                line-height: 1.5;
+            }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <!-- 왼쪽 섹션: 브랜딩 -->
+    <div class="left-section">
+        <div class="logo-container">
+            <div class="logo">
+                S<span class="letter-t">T</span>J
+            </div>
+            <div class="dynamic-tagline">
+                <div class="tagline-text">금융의 모든 것, STJ에서 쉽고 간편하게.</div>
+                <div class="tagline-text">뉴스를 읽다, 금융을 배우다.</div>
+                <div class="tagline-text">AI가 당신의 금융 이해를 돕습니다.</div>
+                <div class="tagline-text">경제를 읽는 습관, 오늘부터 STJ와 함께.</div>
+                <div class="tagline-text">어려운 금융, 이제 쉽고 재밌게.</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 오른쪽 섹션: 로그인 폼 -->
+    <div class="right-section">
+        <div class="login-card">
+            <h1 class="sign-in-title">Sign In</h1>
+            <p class="sign-in-subtitle">금융 뉴스 학습의 첫걸음을 시작하세요.</p>
+
+            <form th:action="@{/login}" th:object="${loginForm}" method="post" class="login-form" id="loginForm">
+                <!-- 전체 오류 메시지 -->
+                <div th:if="${#fields.hasGlobalErrors()}" class="error-message show" id="thymeleafError">
+                    <div class="error-text">🙁 <span th:each="err : ${#fields.globalErrors()}" th:text="${err}"></span></div>
+                </div>
+                
+                <!-- JavaScript용 에러 메시지 -->
+                <div class="error-message" id="errorMessage" style="display: none;">
+                    <div class="error-text" id="errorText"></div>
+                </div>
+                
+                <!-- 아이디 입력 -->
+                <div class="form-group">
+                    <input type="text" id="loginId" th:field="*{loginId}" placeholder="아이디를 입력하세요" autocomplete="username">
+                    <span class="field-error" th:errors="*{loginId}"></span>
+                </div>
+
+                <!-- 비밀번호 입력 -->
+                <div class="form-group">
+                    <input type="password" id="password" th:field="*{password}" placeholder="비밀번호를 입력하세요" autocomplete="current-password">
+                    <span class="field-error" th:errors="*{password}"></span>
+                </div>
+
+                <!-- 폼 푸터: 로그인 버튼 -->
+                <div class="form-footer">
+                    <button type="submit" class="go-btn">
+                        로그인
+                    </button>
+                </div>
+            </form>
+
+            <!-- 추가 액션 버튼들 -->
+            <div class="additional-actions">
+                <a href="/users/add" class="action-btn signup-btn">회원가입</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // 아이디 저장 기능
+    window.addEventListener('DOMContentLoaded', function() {
+        const loginIdInput = document.getElementById('loginId');
+        
+        // 저장된 아이디 불러오기
+        const savedId = localStorage.getItem('savedLoginId');
+        if (savedId) {
+            loginIdInput.value = savedId;
+        }
+        
+        // 로그인 폼 제출 시 아이디 저장
+        document.getElementById('loginForm').addEventListener('submit', function() {
+            if (loginIdInput.value) {
+                localStorage.setItem('savedLoginId', loginIdInput.value);
+            }
+        });
+
+        // 에러 메시지 자동 처리 (Thymeleaf에서 온 에러가 있으면 표시)
+        const errorMessage = document.querySelector('.error-message.show .error-text');
+        if (errorMessage && errorMessage.textContent.trim()) {
+            document.getElementById('errorMessage').classList.add('show');
+        }
+    });
+
+    // 에러 메시지 표시 함수
+    function showError(message) {
+        const errorDiv = document.getElementById('errorMessage');
+        const errorText = document.getElementById('errorText');
+        if (errorText) {
+            errorText.innerHTML = '🙁 ' + message;
+            errorDiv.classList.add('show');
+        }
+    }
+
+    function hideError() {
+        const errorDiv = document.getElementById('errorMessage');
+        if (errorDiv) {
+            errorDiv.classList.remove('show');
+        }
+    }
+</script>
+</body>
+</html>

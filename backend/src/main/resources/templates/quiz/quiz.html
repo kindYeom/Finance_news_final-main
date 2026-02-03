@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>단답형 퀴즈</title>
+    <link rel="stylesheet" href="/css/quiz.css">
+
+    <!-- userId를 JS에서 사용할 수 있게 설정 -->
+    <script th:inline="javascript">
+        /*<![CDATA[*/
+        window.userId = [[${userId}]];
+        window.userNickname = [[${userNickname}]];
+        /*]]>*/
+    </script>
+</head>
+<body style="margin: 0; font-family: 'Noto Sans KR', sans-serif; background-color: #f5f5f5;">
+<div style="display: flex; height: 100vh;">
+
+    <!-- 좌측: 퀴즈 영역 -->
+    <div style="flex: 2; padding: 40px;">
+        <h1>📋 단답형 단어 퀴즈</h1>
+        <form id="quizForm">
+            <div id="quizList">
+                <!-- JS로 채워짐 -->
+            </div>
+            <button type="submit" style="margin-top: 20px;">제출하기</button>
+        </form>
+    </div>
+
+    <!-- 우측: 유저 뱃지 자리 -->
+    <div style="flex: 1; padding: 20px; background-color: #e9f0f8;">
+        <h3>🏅 나의 레벨 현황</h3>
+        <div id="badgeContainer">
+            <!-- 뱃지들이 여기에 동적으로 로드됩니다 -->
+        </div>
+    </div>
+</div>
+
+<script>
+    // 현재 획득한 뱃지 이름들 기록
+    let earnedBadgeNames = new Set();
+
+    window.onload = async function () {
+        if (!window.userId) {
+            alert('로그인 후 이용해주세요.');
+            location.href = '/login';
+            return;
+        }
+
+        const badgeContainer = document.getElementById('badgeContainer');
+
+        // --- 초기 뱃지 로드 ---
+        try {
+            const pointsResponse = await fetch(`/api/users/${window.userId}/points`);
+            let userPoints = 0;
+            if (pointsResponse.ok) {
+                const pointsData = await pointsResponse.json();
+                userPoints = pointsData.totalPoints || 0;
+            }
+
+            const badgeResponse = await fetch(`/api/users/${window.userId}/badges`);
+            if (badgeResponse.ok) {
+                const badges = await badgeResponse.json();
+                const earnedBadges = badges.filter(b => b.earned);
+                earnedBadgeNames = new Set(earnedBadges.map(b => b.name));
+
+                if (earnedBadges.length > 0) {
+                    // 현재 등급 헤더
+                    const rankOrder = ['브론즈','실버','골드','플래티넘'];
+                    const currentRank = earnedBadges
+                        .filter(b => rankOrder.includes(b.name))
+                        .sort((a,b) => rankOrder.indexOf(b.name) - rankOrder.indexOf(a.name))[0];
+                    if (currentRank) {
+                        const header = document.createElement('div');
+                        header.style.cssText = 'margin-bottom:10px; padding:8px 10px; background:#fff; border:1px solid #eee; border-radius:8px; display:flex; align-items:center; gap:10px;';
+                        const img = document.createElement('img');
+                        img.src = currentRank.imageUrl; img.alt = currentRank.name; img.style.cssText = 'width:36px; height:36px; object-fit:contain;';
+                        const title = document.createElement('div');
+                        title.innerHTML = `<strong>현재 등급:</strong> ${currentRank.name}`;
+                        header.appendChild(img); header.appendChild(title);
+                        badgeContainer.appendChild(header);
+                    }
+
+                    // 뱃지 표시
+                    earnedBadges.forEach(badge => {
+                        const badgeDiv = document.createElement('div');
+                        badgeDiv.style.cssText = `
+                            display: inline-block;
+                            margin: 5px;
+                            text-align: center;
+                            padding: 10px;
+                            border-radius: 8px;
+                            background: #ffffff;
+                            color: #333;
+                            box-shadow: 0 2px 4px rgba(0,0,0,0.12);
+                            border: 1px solid #eee;
+                        `;
+                        const img = document.createElement('img');
+                        img.src = badge.imageUrl;
+                        img.alt = badge.name;
+                        img.style.cssText = 'width: 160px; height: 160px; margin-bottom: 12px; filter: none; object-fit: contain;';
+                        badgeDiv.appendChild(img);
+                        const nameDiv = document.createElement('div');
+                        nameDiv.textContent = badge.name;
+                        nameDiv.style.cssText = 'font-size: 16px; font-weight: bold; margin-bottom: 5px;';
+                        badgeDiv.appendChild(nameDiv);
+                        badgeContainer.appendChild(badgeDiv);
+                    });
+
+                    // ✅ 다음 단계 진행률 표시
+                    const next = badges.filter(b => !b.earned).sort((a,b)=>a.conditionValue-b.conditionValue)[0];
+                    if (next) {
+                        const wrap = document.createElement('div');
+                        wrap.style.cssText = 'margin-top:8px; background:#fff; border:1px solid #eee; border-radius:8px; padding:10px;';
+                        const progress = Math.min(100, (userPoints / next.conditionValue) * 100);
+                        wrap.innerHTML = `
+                            <div style="font-size: 12px; margin-bottom: 3px; color: #333;">다음 단계: ${next.name}</div>
+                            <div class="points-text" style="font-size: 12px; color: #333; font-weight: 600;">목표: ${next.conditionValue}점 (현재: ${userPoints}점)</div>
+                            <div class="progress-bar" data-target-points="${next.conditionValue}" style="width: 100%; height: 8px; background: #eee; border-radius: 4px; margin-top: 6px;">
+                                <div class="progress-fill" style="width: ${progress}%; height: 100%; background: #4a90e2; border-radius: 4px;"></div>
+                            </div>`;
+                        badgeContainer.appendChild(wrap);
+                    }
+
+                } else {
+                    // 기본 브론즈 뱃지
+                    showDefaultBronzeBadge(badgeContainer, userPoints);
+                }
+            }
+        } catch (error) {
+            console.error('뱃지 로드 실패:', error);
+        }
+
+        // --- 퀴즈 문제 로드 ---
+        const response = await fetch(`/api/quiz/short-answer?userId=${window.userId}`);
+        const quiz = await response.json();
+        const quizList = document.getElementById("quizList");
+
+        quiz.items.forEach((item, index) => {
+            const div = document.createElement("div");
+            div.className = "quiz-card";
+            div.id = `quiz_card_${index}`;
+            div.setAttribute("data-term-id", item.termId);
+
+            div.innerHTML = `
+                <div class="quiz-level-box">
+                    <span class="level-text">Lv.${item.level}</span>
+                    <span class="result-icon" id="result_${item.termId}"></span>
+                </div>
+                <p><strong>Q${index + 1}. 해설:</strong> ${item.question.replace(/\n/g, '<br>')}</p>
+                <input type="text" id="answer_${index}" name="answer_${item.termId}" placeholder="정답 입력">
+                <button type="button" onclick="
+                    document.getElementById('hint_${index}').style.display = 'block';
+                    this.style.display = 'none';
+                ">초성 힌트 보기</button>
+                <div id="hint_${index}" class="hint" style="display: none;">
+                    <em>초성 힌트:</em> ${item.initialHint}
+                </div>
+                <!-- 정답보기 버튼 (초기에는 숨김, 제출 후 오답일 때 표시) -->
+                <button type="button" id="reveal_${index}" style="display:none; margin-top: 8px;">정답 보기</button>
+            `;
+            quizList.appendChild(div);
+        });
+        // ✅ 제출 이벤트
+        document.getElementById("quizForm").addEventListener("submit", async function (e) {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const answers = {};
+            for (let [key, value] of formData.entries()) {
+                answers[key.replace("answer_", "")] = value.trim();
+            }
+
+            let result;
+            try {
+                const res = await fetch("/api/quiz/submit", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", "Accept": "application/json" },
+                    body: JSON.stringify({ quizId: quiz.quizId, userId: window.userId, answers })
+                });
+                if (!res.ok) {
+                    const errText = await res.text().catch(()=>"<no body>");
+                    console.error("/api/quiz/submit 실패", res.status, errText);
+                    alert(`제출 실패 (status ${res.status}). 잠시 후 다시 시도해주세요.`);
+                    return;
+                }
+                result = await res.json();
+            } catch (err) {
+                console.error('제출 요청 중 오류:', err);
+                alert('제출 중 오류가 발생했습니다. 콘솔 로그를 확인해주세요.');
+                return;
+            }
+
+            // ✅ 채점 결과 반영 (정답보기 버튼은 오답일 때만 노출, 클릭 시 입력창에 빨간 글씨로 정답 표기)
+            try {
+                if (result && result.correctMap) {
+                    Object.entries(result.correctMap).forEach(([termId, isCorrect]) => {
+                        const card = document.querySelector(`.quiz-card[data-term-id="${termId}"]`);
+                        const icon = document.getElementById(`result_${termId}`);
+                        const inputEl = card ? card.querySelector("input[type='text']") : null;
+                        if (card && icon && inputEl) {
+                            card.classList.add(isCorrect ? "correct" : "incorrect");
+                            icon.innerText = isCorrect ? "✔" : "✖";
+                            icon.style.color = isCorrect ? "#007bff" : "#ff4d4f";
+
+                            if (!isCorrect) {
+                                const idx = card.id.replace("quiz_card_", "");
+                                const revealBtn = document.getElementById(`reveal_${idx}`);
+                                if (revealBtn) {
+                                    revealBtn.style.display = 'inline-block';
+                                    revealBtn.onclick = function() {
+                                        inputEl.value = quiz.items[idx].term;
+                                        inputEl.style.color = "#ff0000";  // 빨간 글씨
+                                        inputEl.style.fontWeight = "bold";
+                                        revealBtn.disabled = true;
+                                    };
+                                }
+                            }
+                        }
+                    });
+                }
+            } catch (e) {
+                console.error('채점 결과 반영 중 오류:', e, result);
+            }
+
+            // ✅ 포인트 갱신 & 게이지 업데이트
+            if (result && result.score > 0) {
+                try {
+                    const pointsRes = await fetch(`/api/users/${window.userId}/points`);
+                    if (pointsRes.ok) {
+                        const pointsData = await pointsRes.json();
+                        const earned = result.score || 0;
+                        const latestTotal = (typeof result.totalPoints === 'number' && result.totalPoints > 0)
+                            ? result.totalPoints
+                            : (pointsData.totalPoints || 0) + earned;
+
+                        updateBadgeProgress(latestTotal);
+                        showPointsNotification(earned, latestTotal);
+                        await reloadBadges(latestTotal);
+                        setTimeout(() => reloadBadges().catch(()=>{}), 200);
+                    }
+                } catch (error) {
+                    console.error('포인트 갱신 실패:', error);
+                }
+            }
+
+            alert(`퀴즈 결과: ${result && typeof result.score === 'number' ? result.score : 0}점\n틀린 문제를 확인해보세요!`);
+        });
+
+        // --- 함수들 ---
+
+        // 기본 브론즈 뱃지 노출 (함수 선언은 호이스팅되어 상단 호출과 호환)
+        function showDefaultBronzeBadge(container, userPoints) {
+            const badgeDiv = document.createElement('div');
+            badgeDiv.style.cssText = `
+                display: inline-block;
+                margin: 5px;
+                text-align: center;
+                padding: 10px;
+                border-radius: 8px;
+                background: #ffffff;
+                color: #333;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.12);
+                border: 1px solid #eee;
+            `;
+            const img = document.createElement('img');
+            img.src = '/img/bronze.png';
+            img.alt = '브론즈';
+            img.style.cssText = 'width: 160px; height: 160px; margin-bottom: 12px; object-fit: contain;';
+            badgeDiv.appendChild(img);
+            const nameDiv = document.createElement('div');
+            nameDiv.textContent = '브론즈';
+            nameDiv.style.cssText = 'font-size: 16px; font-weight: bold; margin-bottom: 5px;';
+            badgeDiv.appendChild(nameDiv);
+            // 다음 단계(예: 실버) 간단 안내 게이지
+            const progressDiv = document.createElement('div');
+            const target = 500; // 예시 값 (백엔드 조건에 맞게 조정)
+            const progress = Math.min(100, (userPoints / target) * 100);
+            progressDiv.innerHTML = `
+                <div style="font-size: 12px; margin-bottom: 3px;">다음 단계: 실버</div>
+                <div class="points-text" style="font-size: 12px; color: #333; font-weight: 600;">목표: ${target}점 (현재: ${userPoints}점)</div>
+                <div class="progress-bar" data-target-points="${target}" style="width: 100%; height: 8px; background: #eee; border-radius: 4px; margin-top: 6px;">
+                    <div class="progress-fill" style="width: ${progress}%; height: 100%; background: #4a90e2; border-radius: 4px;"></div>
+                </div>
+            `;
+            badgeDiv.appendChild(progressDiv);
+            container.appendChild(badgeDiv);
+        }
+
+        // 진행률 바 값만 업데이트 (DOM 재구성 없이)
+        function updateBadgeProgress(totalPoints) {
+            const badgeContainer = document.getElementById('badgeContainer');
+            const progressBars = badgeContainer.querySelectorAll('.progress-bar');
+            progressBars.forEach(bar => {
+                const targetPoints = parseInt(bar.dataset.targetPoints);
+                const progress = Math.min(100, (totalPoints / targetPoints) * 100);
+                const progressFill = bar.querySelector('.progress-fill');
+                const pointsText = bar.parentElement ? bar.parentElement.querySelector('.points-text') : null;
+                if (progressFill) progressFill.style.width = progress + '%';
+                if (pointsText) pointsText.textContent = `목표: ${targetPoints}점 (현재: ${totalPoints}점)`;
+            });
+        }
+
+        // 전체 뱃지 패널 재구성 (다음 단계 게이지 포함)
+        async function reloadBadges(totalOverride) {
+            const badgeContainer = document.getElementById('badgeContainer');
+            // 최신 포인트
+            let totalPoints = typeof totalOverride === 'number' ? totalOverride : 0;
+            if (typeof totalOverride !== 'number') {
+                try {
+                    const pointsRes = await fetch(`/api/users/${window.userId}/points`);
+                    if (pointsRes.ok) {
+                        const pointsData = await res.json();
+                        totalPoints = pointsData.totalPoints || 0;
+                    }
+                } catch (e) {
+                    console.error('포인트 재조회 실패:', e);
+                }
+            }
+
+            try {
+                const badgeRes = await fetch(`/api/users/${window.userId}/badges`);
+                if (!badgeRes.ok) {
+                    console.warn('뱃지 API 응답 오류:', badgeRes.status);
+                    return;
+                }
+                const badges = await badgeRes.json();
+                const earnedBadges = badges.filter(b => b.earned);
+                const earnedSet = new Set(earnedBadges.map(b => b.name));
+
+                // 패널 초기화
+                badgeContainer.innerHTML = '';
+
+                if (earnedBadges.length > 0) {
+                    // 현재 등급 헤더
+                    const rankOrder = ['브론즈','실버','골드','플래티넘'];
+                    const currentRank = earnedBadges
+                        .filter(b => rankOrder.includes(b.name))
+                        .sort((a,b) => rankOrder.indexOf(b.name) - rankOrder.indexOf(a.name))[0];
+                    if (currentRank) {
+                        const header = document.createElement('div');
+                        header.style.cssText = 'margin-bottom:10px; padding:8px 10px; background:#fff; border:1px solid #eee; border-radius:8px; display:flex; align-items:center; gap:10px;';
+                        const img = document.createElement('img');
+                        img.src = currentRank.imageUrl; img.alt = currentRank.name; img.style.cssText = 'width:36px; height:36px; object-fit:contain;';
+                        const title = document.createElement('div');
+                        title.innerHTML = `<strong>현재 등급:</strong> ${currentRank.name}`;
+                        header.appendChild(img); header.appendChild(title);
+                        badgeContainer.appendChild(header);
+                    }
+
+                    // 보유 뱃지 카드
+                    earnedBadges.forEach(badge => {
+                        const badgeDiv = document.createElement('div');
+                        badgeDiv.style.cssText = `
+                            display: inline-block;
+                            margin: 5px;
+                            text-align: center;
+                            padding: 10px;
+                            border-radius: 8px;
+                            background: #ffffff;
+                            color: #333;
+                            box-shadow: 0 2px 4px rgba(0,0,0,0.12);
+                            border: 1px solid #eee;
+                        `;
+                        const img = document.createElement('img');
+                        img.src = badge.imageUrl;
+                        img.alt = badge.name;
+                        img.style.cssText = 'width: 160px; height: 160px; margin-bottom: 12px; object-fit: contain;';
+                        badgeDiv.appendChild(img);
+                        const nameDiv = document.createElement('div');
+                        nameDiv.textContent = badge.name;
+                        nameDiv.style.cssText = 'font-size: 16px; font-weight: bold; margin-bottom: 5px;';
+                        badgeDiv.appendChild(nameDiv);
+
+                        // ✅ 이 뱃지 다음 단계 게이지 (가능할 때)
+                        const higher = badges
+                            .filter(b => b.conditionValue > (badge.conditionValue || 0) && !earnedSet.has(b.name))
+                            .sort((a,b) => a.conditionValue - b.conditionValue)[0];
+                        if (higher) {
+                            const progressDiv = document.createElement('div');
+                            const progress = Math.min(100, (totalPoints / higher.conditionValue) * 100);
+                            progressDiv.innerHTML = `
+                                <div style="font-size: 12px; margin-bottom: 3px; color: #333;">다음 단계: ${higher.name}</div>
+                                <div class="points-text" style="font-size: 12px; color: #333; font-weight: 600;">목표: ${higher.conditionValue}점 (현재: ${totalPoints}점)</div>
+                                <div class="progress-bar" data-target-points="${higher.conditionValue}" style="width: 100%; height: 8px; background: #eee; border-radius: 4px; margin-top: 6px;">
+                                    <div class="progress-fill" style="width: ${progress}%; height: 100%; background: #4a90e2; border-radius: 4px;"></div>
+                                </div>
+                            `;
+                            badgeDiv.appendChild(progressDiv);
+                        }
+
+                        badgeContainer.appendChild(badgeDiv);
+                    });
+
+                    // ✅ 보유하지 않은 다음 단계가 따로 있을 경우(상단 공통 진행률)
+                    const next = badges.filter(b => !b.earned).sort((a,b)=>a.conditionValue-b.conditionValue)[0];
+                    if (next) {
+                        const wrap = document.createElement('div');
+                        wrap.style.cssText = 'margin-top:8px; background:#fff; border:1px solid #eee; border-radius:8px; padding:10px;';
+                        const progress = Math.min(100, (totalPoints / next.conditionValue) * 100);
+                        wrap.innerHTML = `
+                            <div style="font-size: 12px; margin-bottom: 3px; color: #333;">다음 단계(공통): ${next.name}</div>
+                            <div class="points-text" style="font-size: 12px; color: #333; font-weight: 600;">목표: ${next.conditionValue}점 (현재: ${totalPoints}점)</div>
+                            <div class="progress-bar" data-target-points="${next.conditionValue}" style="width: 100%; height: 8px; background: #eee; border-radius: 4px; margin-top: 6px;">
+                                <div class="progress-fill" style="width: ${progress}%; height: 100%; background: #4a90e2; border-radius: 4px;"></div>
+                            </div>`;
+                        badgeContainer.appendChild(wrap);
+                    }
+
+                } else {
+                    showDefaultBronzeBadge(badgeContainer, totalPoints);
+                }
+
+                // 새로 획득한 뱃지 감지 (간단 비교)
+                try {
+                    const currentEarned = new Set(earnedBadges.map(b => b.name));
+                    const newlyEarned = [...currentEarned].filter(n => !earnedBadgeNames.has(n));
+                    if (newlyEarned.length > 0) {
+                        showBadgeNotification(newlyEarned);
+                    }
+                    earnedBadgeNames = currentEarned;
+                } catch (e) {
+                    console.warn('뱃지 비교 중 오류', e);
+                }
+
+                // 최종 진행률 텍스트/게이지 최신화
+                updateBadgeProgress(totalPoints);
+
+            } catch (e) {
+                console.error('뱃지 재조회 실패:', e);
+            }
+        }
+
+        // 포인트 획득 알림
+        function showPointsNotification(earnedPoints, totalPoints) {
+            const notification = document.createElement('div');
+            notification.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                background: linear-gradient(135deg, #4CAF50, #45a049);
+                color: white;
+                padding: 15px 20px;
+                border-radius: 8px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+                z-index: 1000;
+                animation: slideIn 0.5s ease-out;
+            `;
+            notification.innerHTML = `
+                <div style="font-weight: bold; margin-bottom: 5px;">🎉 포인트 획득!</div>
+                <div>+${earnedPoints}점 획득</div>
+                <div style="font-size: 12px; opacity: 0.8;">총 ${totalPoints}점</div>
+            `;
+            document.body.appendChild(notification);
+            setTimeout(() => {
+                notification.style.animation = 'slideOut 0.5s ease-in';
+                setTimeout(() => { if (notification.parentNode) notification.parentNode.removeChild(notification); }, 500);
+            }, 3000);
+        }
+
+        // 새 뱃지 획득 알림
+        function showBadgeNotification(badgeNames) {
+            const notification = document.createElement('div');
+            notification.style.cssText = `
+                position: fixed;
+                bottom: 20px;
+                right: 20px;
+                background: linear-gradient(135deg, #ff8a00, #e52e71);
+                color: white;
+                padding: 14px 18px;
+                border-radius: 10px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+                z-index: 1000;
+                animation: slideIn 0.5s ease-out;
+                max-width: 320px;
+            `;
+            const list = badgeNames.map(n => `🏅 ${n}`).join('<br>');
+            notification.innerHTML = `
+                <div style="font-weight: bold; margin-bottom: 6px;">새 뱃지 획득!</div>
+                <div style="font-size: 13px; line-height: 1.4;">${list}</div>
+            `;
+            document.body.appendChild(notification);
+            setTimeout(() => {
+                notification.style.animation = 'slideOut 0.5s ease-in';
+                setTimeout(() => { if (notification.parentNode) notification.parentNode.removeChild(notification); }, 500);
+            }, 3500);
+        }
+
+        // CSS 애니메이션
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes slideIn {
+                from { transform: translateX(100%); opacity: 0; }
+                to { transform: translateX(0); opacity: 1; }
+            }
+            @keyframes slideOut {
+                from { transform: translateX(0); opacity: 1; }
+                to { transform: translateX(100%); opacity: 0; }
+            }
+        `;
+        document.head.appendChild(style);
+    };
+</script>
+</body>
+</html>
